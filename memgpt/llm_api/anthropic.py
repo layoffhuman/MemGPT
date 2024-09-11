@@ -1,22 +1,20 @@
 import json
 import re
-import uuid
 from typing import List, Optional, Union
 
 import requests
 
-from memgpt.constants import JSON_ENSURE_ASCII
-from memgpt.data_types import Message
-from memgpt.models.chat_completion_request import ChatCompletionRequest, Tool
-from memgpt.models.chat_completion_response import (
+from memgpt.schemas.message import Message
+from memgpt.schemas.openai.chat_completion_request import ChatCompletionRequest, Tool
+from memgpt.schemas.openai.chat_completion_response import (
     ChatCompletionResponse,
     Choice,
     FunctionCall,
 )
-from memgpt.models.chat_completion_response import (
+from memgpt.schemas.openai.chat_completion_response import (
     Message as ChoiceMessage,  # NOTE: avoid conflict with our own MemGPT Message datatype
 )
-from memgpt.models.chat_completion_response import ToolCall, UsageStatistics
+from memgpt.schemas.openai.chat_completion_response import ToolCall, UsageStatistics
 from memgpt.utils import get_utc_time, smart_urljoin
 
 BASE_URL = "https://api.anthropic.com/v1"
@@ -257,7 +255,7 @@ def convert_anthropic_response_to_chatcompletion(
                 type="function",
                 function=FunctionCall(
                     name=response_json["content"][1]["name"],
-                    arguments=json.dumps(response_json["content"][1]["input"], ensure_ascii=JSON_ENSURE_ASCII),
+                    arguments=json.dumps(response_json["content"][1]["input"], indent=2),
                 ),
             )
         ]
@@ -331,8 +329,14 @@ def anthropic_chat_completions_request(
     data["system"] = data["messages"][0]["content"]
     data["messages"] = data["messages"][1:]
 
+    # set `content` to None if missing
+    for message in data["messages"]:
+        if "content" not in message:
+            message["content"] = None
+
     # Convert to Anthropic format
-    msg_objs = [Message.dict_to_message(user_id=uuid.uuid4(), agent_id=uuid.uuid4(), openai_message_dict=m) for m in data["messages"]]
+
+    msg_objs = [Message.dict_to_message(user_id=None, agent_id=None, openai_message_dict=m) for m in data["messages"]]
     data["messages"] = [m.to_anthropic_dict(inner_thoughts_xml_tag=inner_thoughts_xml_tag) for m in msg_objs]
 
     # Handling Anthropic special requirement for 'user' message in front

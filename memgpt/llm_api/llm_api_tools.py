@@ -3,15 +3,13 @@ import json
 import os
 import random
 import time
-import uuid
 import warnings
 from typing import List, Optional, Union
 
 import requests
 
-from memgpt.constants import CLI_WARNING_PREFIX, JSON_ENSURE_ASCII
+from memgpt.constants import CLI_WARNING_PREFIX, OPENAI_CONTEXT_WINDOW_ERROR_SUBSTRING
 from memgpt.credentials import MemGPTCredentials
-from memgpt.data_types import Message
 from memgpt.llm_api.anthropic import anthropic_chat_completions_request
 from memgpt.llm_api.azure_openai import (
     MODEL_TO_AZURE_ENGINE,
@@ -31,17 +29,20 @@ from memgpt.local_llm.constants import (
     INNER_THOUGHTS_KWARG,
     INNER_THOUGHTS_KWARG_DESCRIPTION,
 )
-from memgpt.models.chat_completion_request import (
+from memgpt.schemas.enums import OptionState
+from memgpt.schemas.llm_config import LLMConfig
+from memgpt.schemas.message import Message
+from memgpt.schemas.openai.chat_completion_request import (
     ChatCompletionRequest,
     Tool,
     cast_message_to_subtype,
 )
-from memgpt.models.chat_completion_response import ChatCompletionResponse
-from memgpt.models.pydantic_models import LLMConfigModel, OptionState
+from memgpt.schemas.openai.chat_completion_response import ChatCompletionResponse
 from memgpt.streaming_interface import (
     AgentChunkStreamingInterface,
     AgentRefreshStreamingInterface,
 )
+from memgpt.utils import json_dumps
 
 LLM_API_PROVIDER_OPTIONS = ["openai", "azure", "anthropic", "google_ai", "cohere", "local"]
 
@@ -108,7 +109,7 @@ def unpack_inner_thoughts_from_kwargs(
 
                     # replace the kwargs
                     new_choice = choice.model_copy(deep=True)
-                    new_choice.message.tool_calls[0].function.arguments = json.dumps(func_args, ensure_ascii=JSON_ENSURE_ASCII)
+                    new_choice.message.tool_calls[0].function.arguments = json_dumps(func_args)
                     # also replace the message content
                     if new_choice.message.content is not None:
                         warnings.warn(f"Overwriting existing inner monologue ({new_choice.message.content}) with kwarg ({inner_thoughts})")
@@ -133,7 +134,7 @@ def is_context_overflow_error(exception: requests.exceptions.RequestException) -
     """Checks if an exception is due to context overflow (based on common OpenAI response messages)"""
     from memgpt.utils import printd
 
-    match_string = "maximum context length"
+    match_string = OPENAI_CONTEXT_WINDOW_ERROR_SUBSTRING
 
     # Backwards compatibility with openai python package/client v0.28 (pre-v1 client migration)
     if match_string in str(exception):
@@ -228,11 +229,11 @@ def retry_with_exponential_backoff(
 @retry_with_exponential_backoff
 def create(
     # agent_state: AgentState,
-    llm_config: LLMConfigModel,
+    llm_config: LLMConfig,
     messages: List[Message],
-    user_id: uuid.UUID = None,  # option UUID to associate request with
-    functions: list = None,
-    functions_python: list = None,
+    user_id: Optional[str] = None,  # option UUID to associate request with
+    functions: Optional[list] = None,
+    functions_python: Optional[list] = None,
     function_call: str = "auto",
     # hint
     first_message: bool = False,
@@ -258,8 +259,6 @@ def create(
     if function_call and not functions:
         printd("unsetting function_call because functions is None")
         function_call = None
-
-    # print("HELLO")
 
     # openai
     if llm_config.model_endpoint_type == "openai":

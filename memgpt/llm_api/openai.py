@@ -6,9 +6,13 @@ import requests
 from httpx_sse import connect_sse
 from httpx_sse._exceptions import SSEError
 
+from memgpt.constants import OPENAI_CONTEXT_WINDOW_ERROR_SUBSTRING
+from memgpt.errors import LLMError
 from memgpt.local_llm.utils import num_tokens_from_functions, num_tokens_from_messages
-from memgpt.models.chat_completion_request import ChatCompletionRequest
-from memgpt.models.chat_completion_response import (
+from memgpt.schemas.message import Message as _Message
+from memgpt.schemas.message import MessageRole as _MessageRole
+from memgpt.schemas.openai.chat_completion_request import ChatCompletionRequest
+from memgpt.schemas.openai.chat_completion_response import (
     ChatCompletionChunkResponse,
     ChatCompletionResponse,
     Choice,
@@ -17,12 +21,12 @@ from memgpt.models.chat_completion_response import (
     ToolCall,
     UsageStatistics,
 )
-from memgpt.models.embedding_response import EmbeddingResponse
+from memgpt.schemas.openai.embedding_response import EmbeddingResponse
 from memgpt.streaming_interface import (
     AgentChunkStreamingInterface,
     AgentRefreshStreamingInterface,
 )
-from memgpt.utils import get_utc_time, smart_urljoin
+from memgpt.utils import smart_urljoin
 
 OPENAI_SSE_DONE = "[DONE]"
 
@@ -82,6 +86,8 @@ def openai_chat_completions_process_stream(
     api_key: str,
     chat_completion_request: ChatCompletionRequest,
     stream_inferface: Optional[Union[AgentChunkStreamingInterface, AgentRefreshStreamingInterface]] = None,
+    create_message_id: bool = True,
+    create_message_datetime: bool = True,
 ) -> ChatCompletionResponse:
     """Process a streaming completion response, and return a ChatCompletionRequest at the end.
 
@@ -89,6 +95,7 @@ def openai_chat_completions_process_stream(
     on the chunks received from the OpenAI-compatible server POST SSE response.
     """
     assert chat_completion_request.stream == True
+    assert stream_inferface is not None, "Required"
 
     # Count the prompt tokens
     # TODO move to post-request?
@@ -113,13 +120,26 @@ def openai_chat_completions_process_stream(
             model=chat_completion_request.model,
         )
 
+    # Create a dummy Message object to get an ID and date
+    # TODO(sarah): add message ID generation function
+    dummy_message = _Message(
+        role=_MessageRole.assistant,
+        text="",
+        user_id="",
+        agent_id="",
+        model="",
+        name=None,
+        tool_calls=None,
+        tool_call_id=None,
+    )
+
     TEMP_STREAM_RESPONSE_ID = "temp_id"
     TEMP_STREAM_FINISH_REASON = "temp_null"
     TEMP_STREAM_TOOL_CALL_ID = "temp_id"
     chat_completion_response = ChatCompletionResponse(
-        id=TEMP_STREAM_RESPONSE_ID,
+        id=dummy_message.id if create_message_id else TEMP_STREAM_RESPONSE_ID,
         choices=[],
-        created=get_utc_time(),
+        created=dummy_message.created_at,  # NOTE: doesn't matter since both will do get_utc_time()
         model=chat_completion_request.model,
         usage=UsageStatistics(
             completion_tokens=0,
@@ -137,11 +157,14 @@ def openai_chat_completions_process_stream(
             openai_chat_completions_request_stream(url=url, api_key=api_key, chat_completion_request=chat_completion_request)
         ):
             assert isinstance(chat_completion_chunk, ChatCompletionChunkResponse), type(chat_completion_chunk)
-            # print(chat_completion_chunk)
 
             if stream_inferface:
                 if isinstance(stream_inferface, AgentChunkStreamingInterface):
-                    stream_inferface.process_chunk(chat_completion_chunk)
+                    stream_inferface.process_chunk(
+                        chat_completion_chunk,
+                        message_id=chat_completion_response.id if create_message_id else chat_completion_chunk.id,
+                        message_date=chat_completion_response.created if create_message_datetime else chat_completion_chunk.created,
+                    )
                 elif isinstance(stream_inferface, AgentRefreshStreamingInterface):
                     stream_inferface.process_refresh(chat_completion_response)
                 else:
@@ -208,10 +231,12 @@ def openai_chat_completions_process_stream(
                     raise NotImplementedError(f"Old function_call style not support with stream=True")
 
             # overwrite response fields based on latest chunk
-            chat_completion_response.id = chat_completion_chunk.id
-            chat_completion_response.system_fingerprint = chat_completion_chunk.system_fingerprint
-            chat_completion_response.created = chat_completion_chunk.created
+            if not create_message_id:
+                chat_completion_response.id = chat_completion_chunk.id
+            if not create_message_datetime:
+                chat_completion_response.created = chat_completion_chunk.created
             chat_completion_response.model = chat_completion_chunk.model
+            chat_completion_response.system_fingerprint = chat_completion_chunk.system_fingerprint
 
             # increment chunk counter
             n_chunks += 1
@@ -233,7 +258,8 @@ def openai_chat_completions_process_stream(
             for c in chat_completion_response.choices
         ]
     )
-    assert chat_completion_response.id != TEMP_STREAM_RESPONSE_ID
+    if not create_message_id:
+        assert chat_completion_response.id != dummy_message.id
 
     # compute token usage before returning
     # TODO try actually computing the #tokens instead of assuming the chunks is the same
@@ -262,7 +288,10 @@ def _sse_post(url: str, data: dict, headers: dict) -> Generator[ChatCompletionCh
                     response_dict = json.loads(response_bytes.decode("utf-8"))
                     error_message = response_dict["error"]["message"]
                     # e.g.: This model's maximum context length is 8192 tokens. However, your messages resulted in 8198 tokens (7450 in the messages, 748 in the functions). Please reduce the length of the messages or functions.
-                    raise Exception(error_message)
+                    if OPENAI_CONTEXT_WINDOW_ERROR_SUBSTRING in error_message:
+                        raise LLMError(error_message)
+                except LLMError:
+                    raise
                 except:
                     print(f"Failed to parse SSE message, throwing SSE HTTP error up the stack")
                     event_source.response.raise_for_status()
@@ -370,7 +399,10 @@ def openai_chat_completions_request(
     url = smart_urljoin(url, "chat/completions")
     headers = {"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"}
     data = chat_completion_request.model_dump(exclude_none=True)
-    data["parallel_tool_calls"] = False
+
+    # add check otherwise will cause error: "Invalid value for 'parallel_tool_calls': 'parallel_tool_calls' is only allowed when 'tools' are specified."
+    if chat_completion_request.tools is not None:
+        data["parallel_tool_calls"] = False
 
     printd("Request:\n", json.dumps(data, indent=2))
 
@@ -386,7 +418,7 @@ def openai_chat_completions_request(
     printd(f"Sending request to {url}")
     try:
         response = requests.post(url, headers=headers, json=data)
-        # printd(f"response = {response}, response.text = {response.text}")
+        printd(f"response = {response}, response.text = {response.text}")
         response.raise_for_status()  # Raises HTTPError for 4XX/5XX status
 
         response = response.json()  # convert to dict from string

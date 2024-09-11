@@ -4,6 +4,7 @@ import json
 import os
 import uuid
 from dataclasses import dataclass
+from typing import Optional
 
 import memgpt
 import memgpt.utils as utils
@@ -15,8 +16,10 @@ from memgpt.constants import (
     DEFAULT_PRESET,
     MEMGPT_DIR,
 )
-from memgpt.data_types import AgentState, EmbeddingConfig, LLMConfig
 from memgpt.log import get_logger
+from memgpt.schemas.agent import AgentState
+from memgpt.schemas.embedding_config import EmbeddingConfig
+from memgpt.schemas.llm_config import LLMConfig
 
 logger = get_logger(__name__)
 
@@ -56,6 +59,9 @@ class MemGPTConfig:
 
     # embedding parameters
     default_embedding_config: EmbeddingConfig = None
+
+    # NONE OF THIS IS CONFIG ↓↓↓↓↓
+    # @norton120 these are the metdadatastore
 
     # database configs: archival
     archival_storage_type: str = "chroma"  # local, db
@@ -99,19 +105,19 @@ class MemGPTConfig:
         return uuid.UUID(int=uuid.getnode()).hex
 
     @classmethod
-    def load(cls) -> "MemGPTConfig":
+    def load(cls, llm_config: Optional[LLMConfig] = None, embedding_config: Optional[EmbeddingConfig] = None) -> "MemGPTConfig":
         # avoid circular import
-        from memgpt.migrate import VERSION_CUTOFF, config_is_compatible
         from memgpt.utils import printd
 
-        if not config_is_compatible(allow_empty=True):
-            error_message = " ".join(
-                [
-                    f"\nYour current config file is incompatible with MemGPT versions later than {VERSION_CUTOFF}.",
-                    f"\nTo use MemGPT, you must either downgrade your MemGPT version (<= {VERSION_CUTOFF}) or regenerate your config using `memgpt configure`, or `memgpt migrate` if you would like to migrate old agents.",
-                ]
-            )
-            raise ValueError(error_message)
+        # from memgpt.migrate import VERSION_CUTOFF, config_is_compatible
+        # if not config_is_compatible(allow_empty=True):
+        #    error_message = " ".join(
+        #        [
+        #            f"\nYour current config file is incompatible with MemGPT versions later than {VERSION_CUTOFF}.",
+        #            f"\nTo use MemGPT, you must either downgrade your MemGPT version (<= {VERSION_CUTOFF}) or regenerate your config using `memgpt configure`, or `memgpt migrate` if you would like to migrate old agents.",
+        #        ]
+        #    )
+        #    raise ValueError(error_message)
 
         config = configparser.ConfigParser()
 
@@ -149,11 +155,11 @@ class MemGPTConfig:
             llm_config_dict = {k: v for k, v in llm_config_dict.items() if v is not None}
             embedding_config_dict = {k: v for k, v in embedding_config_dict.items() if v is not None}
             # Correct the types that aren't strings
-            if llm_config_dict["context_window"] is not None:
+            if "context_window" in llm_config_dict and llm_config_dict["context_window"] is not None:
                 llm_config_dict["context_window"] = int(llm_config_dict["context_window"])
-            if embedding_config_dict["embedding_dim"] is not None:
+            if "embedding_dim" in embedding_config_dict and embedding_config_dict["embedding_dim"] is not None:
                 embedding_config_dict["embedding_dim"] = int(embedding_config_dict["embedding_dim"])
-            if embedding_config_dict["embedding_chunk_size"] is not None:
+            if "embedding_chunk_size" in embedding_config_dict and embedding_config_dict["embedding_chunk_size"] is not None:
                 embedding_config_dict["embedding_chunk_size"] = int(embedding_config_dict["embedding_chunk_size"])
             # Construct the inner properties
             llm_config = LLMConfig(**llm_config_dict)
@@ -188,6 +194,9 @@ class MemGPTConfig:
             config_dict = {k: v for k, v in config_dict.items() if v is not None}
 
             return cls(**config_dict)
+
+        # assert embedding_config is not None, "Embedding config must be provided if config does not exist"
+        # assert llm_config is not None, "LLM config must be provided if config does not exist"
 
         # create new config
         anon_clientid = MemGPTConfig.generate_uuid()
