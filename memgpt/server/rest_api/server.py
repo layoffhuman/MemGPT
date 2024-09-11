@@ -52,7 +52,7 @@ Start the server with:
 interface: StreamingServerInterface = StreamingServerInterface
 server: SyncServer = SyncServer(default_interface_factory=lambda: interface())
 
-if password := settings.server_pass:
+if password := settings.server_pass or os.getenv('MEMGPT_SERVER_PASSWORD'):
     # if the pass was specified in the environment, use it
     print(f"Using existing admin server password from environment.")
 else:

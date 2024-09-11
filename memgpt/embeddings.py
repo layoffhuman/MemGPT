@@ -141,7 +141,7 @@ def default_embedding_model():
     from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 
     os.environ["TOKENIZERS_PARALLELISM"] = "False"
-    model = "BAAI/bge-small-en-v1.5"
+    model = "./torch/torch"
     return HuggingFaceEmbedding(model_name=model)
 
 
