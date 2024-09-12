@@ -17,11 +17,8 @@ from memgpt.schemas.openai.chat_completion_response import (
 from memgpt.server.rest_api.routers.v1.agents import send_message_to_agent
 from memgpt.server.rest_api.utils import get_memgpt_server
 
-if TYPE_CHECKING:
-    pass
-
-    from memgpt.server.server import SyncServer
-    from memgpt.utils import get_utc_time
+from memgpt.server.server import SyncServer
+from memgpt.utils import get_utc_time
 
 router = APIRouter(prefix="/v1/chat/completions", tags=["chat_completions"])
 

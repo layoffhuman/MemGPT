@@ -667,10 +667,11 @@ class SyncServer(Server):
 
             # get tools + make sure they exist
             tool_objs = []
-            for tool_name in request.tools:
-                tool_obj = self.ms.get_tool(tool_name=tool_name, user_id=user_id)
-                assert tool_obj, f"Tool {tool_name} does not exist"
-                tool_objs.append(tool_obj)
+            if request.tools:
+                for tool_name in request.tools:
+                    tool_obj = self.ms.get_tool(tool_name=tool_name, user_id=user_id)
+                    assert tool_obj, f"Tool {tool_name} does not exist"
+                    tool_objs.append(tool_obj)
 
             # TODO: save the agent state
             agent_state = AgentState(

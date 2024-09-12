@@ -1,5 +1,5 @@
 from openai import OpenAI
-
+import os
 """
 This script provides an example of how you can use OpenAI's python client with a MemGPT server.
 
@@ -8,7 +8,8 @@ Before running this example, make sure you start the OpenAI-compatible REST serv
 
 
 def main():
-    client = OpenAI(base_url="http://localhost:8283/v1")
+    os.environ["OPENAI_API_KEY"] = "noraproject"
+    client = OpenAI(base_url="http://localhost:8283/openai/v1")
 
     # create assistant (creates a memgpt preset)
     assistant = client.beta.assistants.create(
