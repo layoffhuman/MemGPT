@@ -16,12 +16,11 @@ from memgpt.schemas.openai.chat_completion_response import (
 # TODO this belongs in a controller!
 from memgpt.server.rest_api.routers.v1.agents import send_message_to_agent
 from memgpt.server.rest_api.utils import get_memgpt_server
-
+from memgpt.utils import get_utc_time
 if TYPE_CHECKING:
     pass
 
     from memgpt.server.server import SyncServer
-    from memgpt.utils import get_utc_time
 
 router = APIRouter(prefix="/v1/chat/completions", tags=["chat_completions"])
 
