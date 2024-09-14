@@ -93,10 +93,11 @@ async def create_chat_completion(
         created_at = None
         for memgpt_msg in response_messages.messages:
             assert isinstance(memgpt_msg, MemGPTMessage)
-            if isinstance(memgpt_msg, FunctionCall):
-                if memgpt_msg.name and memgpt_msg.name == "send_message":
+            if hasattr(memgpt_msg, 'function_call') and isinstance(memgpt_msg.function_call, FunctionCall):
+                function_call = memgpt_msg.function_call
+                if function_call.name and function_call.name == "send_message":
                     try:
-                        memgpt_function_call_args = json.loads(memgpt_msg.arguments)
+                        memgpt_function_call_args = json.loads(function_call.arguments)
                         visible_message_str += memgpt_function_call_args["message"]
                         id = memgpt_msg.id
                         created_at = memgpt_msg.date
