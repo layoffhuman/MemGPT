@@ -42,9 +42,9 @@ def openai_get_model_list(url: str, api_key: Union[str, None], fix_url: Optional
         if not url.endswith("/v1"):
             url = smart_urljoin(url, "v1")
 
-    url = smart_urljoin(url, "models")
+    url = smart_urljoin(url, "models") + "?api-version=2024-06-01"
 
-    headers = {"Content-Type": "application/json"}
+    headers = {"Content-Type": "application/json", "api-key": "6f802e4072614465b65fa9b243bba6ea"}
     if api_key is not None:
         headers["Authorization"] = f"Bearer {api_key}"
 
@@ -396,8 +396,8 @@ def openai_chat_completions_request(
     """
     from memgpt.utils import printd
 
-    url = smart_urljoin(url, "chat/completions")
-    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"}
+    url = smart_urljoin(url, "/openai/deployments/devapi4o/chat/completions?api-version=2024-02-15-preview")
+    headers = {"Content-Type": "application/json", "api-key" : f"{api_key}"}
     data = chat_completion_request.model_dump(exclude_none=True)
 
     # add check otherwise will cause error: "Invalid value for 'parallel_tool_calls': 'parallel_tool_calls' is only allowed when 'tools' are specified."
