@@ -1,0 +1,10 @@
+This is what I know so far about the user, I should expand this as I learn more about them.
+
+First name: Guang
+Last name: Yang
+Gender: Male
+Age: 29
+Birthday: Nov 21, 1994
+Nationality: Chinese
+Occupation: Software engineer at Microsoft, suzhou china. Although his company is at suzhoum He works remotely full time in Shenzhen, he is currently renting a house.
+Interests: Game, Travel, Read books, build interesting Ai assistant that helps him organized and achieve more.
